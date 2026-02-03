@@ -8,10 +8,10 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const API_KEY = process.env.API_KEY;
 const allowedOrigins = [
-  "http://localhost:3000",        // Next.js dev
+  "http://localhost:3000", // Next.js dev
   "http://127.0.0.1:3000",
   "http://192.168.1.8:3000",
-  "https://www.aliffajriadi.my.id",       // production
+  "https://www.aliffajriadi.my.id", // production
   "https://aliffajriadi.my.id",
 ];
 
@@ -30,7 +30,7 @@ app.use(
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "x-api-key"],
     credentials: true,
-  })
+  }),
 );
 app.use(express.json());
 
@@ -43,6 +43,10 @@ const authenticate = (req, res, next) => {
     res.status(401).json({ error: "Unauthorized" });
   }
 };
+
+app.get("/api/auth/verify", authenticate, (req, res) => {
+  res.json({ status: "ok" });
+});
 
 // --- Profile ---
 app.get("/api/profile", async (req, res) => {
