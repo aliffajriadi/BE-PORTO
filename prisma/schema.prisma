@@ -1,0 +1,92 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "sqlite"
+    url      = "file:./dev.db"
+}
+
+model Project {
+    id             String   @id @default(uuid())
+    title_en       String
+    title_id       String
+    description_en String
+    description_id String
+    type           String
+    techStack      String
+    image          String?
+    demoUrl        String?
+    githubUrl      String?
+    isFeatured     Boolean  @default(false)
+    order          Int      @default(0)
+    createdAt      DateTime @default(now())
+    updatedAt      DateTime @updatedAt
+}
+
+model Blog {
+    id         String   @id @default(uuid())
+    title_en   String
+    title_id   String
+    slug       String   @unique
+    excerpt_en String
+    excerpt_id String
+    content_en String
+    content_id String
+    category   String
+    date       DateTime @default(now())
+    image      String?
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+}
+
+model Experience {
+    id             String   @id @default(uuid())
+    year           String
+    role_en        String
+    role_id        String
+    company        String
+    description_en String
+    description_id String
+    order          Int      @default(0)
+    createdAt      DateTime @default(now())
+    updatedAt      DateTime @updatedAt
+}
+
+model Gallery {
+    id         String   @id @default(uuid())
+    imageUrl   String
+    caption_en String?
+    caption_id String?
+    location   String?
+    date       DateTime @default(now())
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+}
+
+model Profile {
+    id         String   @id @default("hero-profile")
+    name       String
+    role_en    String
+    role_id    String
+    bio_en     String
+    bio_id     String
+    tagline_en String
+    tagline_id String
+    imageUrl   String?
+    github     String?
+    linkedin   String?
+    twitter    String?
+    updatedAt  DateTime @updatedAt
+}
+
+model Skill {
+    id        String   @id @default(uuid())
+    name      String
+    category  String? // e.g., Frontend, Backend, Tools
+    icon      String? // lucide icon name or image url
+    level     Int      @default(0) // 1-100 or 1-5
+    order     Int      @default(0)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
