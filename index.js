@@ -233,11 +233,76 @@ app.delete("/api/experiences/:id", authenticate, async (req, res) => {
 });
 
 // --- Gallery ---
+// Helper to get IP
+const getIp = (req) => {
+  const forwarded = req.headers["x-forwarded-for"];
+  return forwarded
+    ? forwarded.split(",")[0]
+    : req.connection.remoteAddress || req.ip;
+};
+
 app.get("/api/gallery", async (req, res) => {
-  const gallery = await prisma.gallery.findMany({
-    orderBy: { date: "desc" },
-  });
-  res.json(gallery);
+  const ip = getIp(req);
+  try {
+    const gallery = await prisma.gallery.findMany({
+      orderBy: { date: "desc" },
+      include: {
+        _count: {
+          select: { likes: true },
+        },
+      },
+    });
+
+    const userLikes = await prisma.galleryLike.findMany({
+      where: { ipAddress: ip },
+      select: { galleryId: true },
+    });
+
+    const likedIds = new Set(userLikes.map((l) => l.galleryId));
+
+    const result = gallery.map((item) => ({
+      ...item,
+      likesCount: item._count.likes,
+      isLiked: likedIds.has(item.id),
+    }));
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/gallery/:id/like", async (req, res) => {
+  const { id } = req.params;
+  const ip = getIp(req);
+
+  try {
+    const existingLike = await prisma.galleryLike.findUnique({
+      where: {
+        galleryId_ipAddress: {
+          galleryId: id,
+          ipAddress: ip,
+        },
+      },
+    });
+
+    if (existingLike) {
+      await prisma.galleryLike.delete({
+        where: { id: existingLike.id },
+      });
+      res.json({ liked: false });
+    } else {
+      await prisma.galleryLike.create({
+        data: {
+          galleryId: id,
+          ipAddress: ip,
+        },
+      });
+      res.json({ liked: true });
+    }
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 app.post("/api/gallery", authenticate, async (req, res) => {
