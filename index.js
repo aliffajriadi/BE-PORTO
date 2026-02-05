@@ -4,6 +4,17 @@ const { PrismaClient } = require("@prisma/client");
 require("dotenv").config();
 
 const prisma = new PrismaClient();
+const ImageKit = require("imagekit");
+
+const imagekit = new ImageKit({
+  publicKey:
+    process.env.IMAGEKIT_PUBLIC_KEY || "public_eCQf3j533fEHqgIkNhMjXChRUf4=",
+  privateKey:
+    process.env.IMAGEKIT_PRIVATE_KEY || "private_hn0EBSeLStcrY9bsmm64bra+Nlk=",
+  urlEndpoint:
+    process.env.IMAGEKIT_URL_ENDPOINT || "https://ik.imagekit.io/8zzj11dsp",
+});
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 const API_KEY = process.env.API_KEY;
@@ -46,6 +57,12 @@ const authenticate = (req, res, next) => {
 
 app.get("/api/auth/verify", authenticate, (req, res) => {
   res.json({ status: "ok" });
+});
+
+// --- ImageKit Auth ---
+app.get("/api/imagekit/auth", (req, res) => {
+  const result = imagekit.getAuthenticationParameters();
+  res.send(result);
 });
 
 // --- Profile ---
