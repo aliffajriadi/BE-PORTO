@@ -5,6 +5,15 @@ require("dotenv").config();
 
 const prisma = new PrismaClient();
 const ImageKit = require("imagekit");
+const NodeCache = require("node-cache");
+
+const cache = new NodeCache({ stdTTL: 3600 });
+
+const clearCache = (prefix) => {
+  const keys = cache.keys();
+  const keysToDelete = keys.filter((key) => key.startsWith(prefix));
+  cache.del(keysToDelete);
+};
 
 const imagekit = new ImageKit({
   publicKey:
@@ -67,6 +76,10 @@ app.get("/api/imagekit/auth", (req, res) => {
 
 // --- Profile ---
 app.get("/api/profile", async (req, res) => {
+  const cacheKey = "profile";
+  const cachedData = cache.get(cacheKey);
+  if (cachedData) return res.json(cachedData);
+
   let profile = await prisma.profile.findFirst();
   if (!profile) {
     profile = await prisma.profile.create({
@@ -85,6 +98,7 @@ app.get("/api/profile", async (req, res) => {
       },
     });
   }
+  cache.set(cacheKey, profile);
   res.json(profile);
 });
 
@@ -96,6 +110,7 @@ app.put("/api/profile", authenticate, async (req, res) => {
       update: data,
       create: { id: "hero-profile", ...data },
     });
+    cache.del("profile");
     res.json(profile);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -104,9 +119,14 @@ app.put("/api/profile", authenticate, async (req, res) => {
 
 // --- Projects ---
 app.get("/api/projects", async (req, res) => {
+  const cacheKey = "projects";
+  const cachedData = cache.get(cacheKey);
+  if (cachedData) return res.json(cachedData);
+
   const projects = await prisma.project.findMany({
     orderBy: { order: "asc" },
   });
+  cache.set(cacheKey, projects);
   res.json(projects);
 });
 
@@ -115,6 +135,7 @@ app.post("/api/projects", authenticate, async (req, res) => {
   if (data.order) data.order = parseInt(data.order);
   try {
     const project = await prisma.project.create({ data });
+    cache.del("projects");
     res.json(project);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -127,6 +148,7 @@ app.put("/api/projects/:id", authenticate, async (req, res) => {
   if (data.order) data.order = parseInt(data.order);
   try {
     const project = await prisma.project.update({ where: { id }, data });
+    cache.del("projects");
     res.json(project);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -137,6 +159,7 @@ app.delete("/api/projects/:id", authenticate, async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.project.delete({ where: { id } });
+    cache.del("projects");
     res.json({ message: "Deleted" });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -145,6 +168,10 @@ app.delete("/api/projects/:id", authenticate, async (req, res) => {
 
 // --- Blogs ---
 app.get("/api/blogs", async (req, res) => {
+  const cacheKey = `blogs:list:${JSON.stringify(req.query)}`;
+  const cachedData = cache.get(cacheKey);
+  if (cachedData) return res.json(cachedData);
+
   const { category, search } = req.query;
   const where = {};
   if (category && category !== "All") where.category = category;
@@ -160,18 +187,30 @@ app.get("/api/blogs", async (req, res) => {
     where,
     orderBy: { date: "desc" },
   });
+  cache.set(cacheKey, blogs);
   res.json(blogs);
 });
 
 app.get("/api/blogs/categories", async (req, res) => {
+  const cacheKey = "blogs:categories";
+  const cachedData = cache.get(cacheKey);
+  if (cachedData) return res.json(cachedData);
+
   const categories = await prisma.blog.groupBy({ by: ["category"] });
-  res.json(["All", ...categories.map((c) => c.category)]);
+  const result = ["All", ...categories.map((c) => c.category)];
+  cache.set(cacheKey, result);
+  res.json(result);
 });
 
 app.get("/api/blogs/:slug", async (req, res) => {
   const { slug } = req.params;
+  const cacheKey = `blogs:detail:${slug}`;
+  const cachedData = cache.get(cacheKey);
+  if (cachedData) return res.json(cachedData);
+
   const blog = await prisma.blog.findUnique({ where: { slug } });
   if (!blog) return res.status(404).json({ error: "Not found" });
+  cache.set(cacheKey, blog);
   res.json(blog);
 });
 
@@ -181,6 +220,7 @@ app.post("/api/blogs", authenticate, async (req, res) => {
     const blog = await prisma.blog.create({
       data: { ...data, date: new Date() },
     });
+    clearCache("blogs");
     res.json(blog);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -192,6 +232,7 @@ app.put("/api/blogs/:id", authenticate, async (req, res) => {
   const data = req.body;
   try {
     const blog = await prisma.blog.update({ where: { id }, data });
+    clearCache("blogs");
     res.json(blog);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -202,6 +243,7 @@ app.delete("/api/blogs/:id", authenticate, async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.blog.delete({ where: { id } });
+    clearCache("blogs");
     res.json({ message: "Deleted" });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -210,9 +252,14 @@ app.delete("/api/blogs/:id", authenticate, async (req, res) => {
 
 // --- Experiences ---
 app.get("/api/experiences", async (req, res) => {
+  const cacheKey = "experiences";
+  const cachedData = cache.get(cacheKey);
+  if (cachedData) return res.json(cachedData);
+
   const experiences = await prisma.experience.findMany({
     orderBy: { order: "asc" },
   });
+  cache.set(cacheKey, experiences);
   res.json(experiences);
 });
 
@@ -221,6 +268,7 @@ app.post("/api/experiences", authenticate, async (req, res) => {
   if (data.order) data.order = parseInt(data.order);
   try {
     const exp = await prisma.experience.create({ data });
+    cache.del("experiences");
     res.json(exp);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -233,6 +281,7 @@ app.put("/api/experiences/:id", authenticate, async (req, res) => {
   if (data.order) data.order = parseInt(data.order);
   try {
     const exp = await prisma.experience.update({ where: { id }, data });
+    cache.del("experiences");
     res.json(exp);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -243,6 +292,7 @@ app.delete("/api/experiences/:id", authenticate, async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.experience.delete({ where: { id } });
+    cache.del("experiences");
     res.json({ message: "Deleted" });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -260,15 +310,20 @@ const getIp = (req) => {
 
 app.get("/api/gallery", async (req, res) => {
   const ip = getIp(req);
+  const cacheKey = "gallery_base";
   try {
-    const gallery = await prisma.gallery.findMany({
-      orderBy: { date: "desc" },
-      include: {
-        _count: {
-          select: { likes: true },
+    let gallery = cache.get(cacheKey);
+    if (!gallery) {
+      gallery = await prisma.gallery.findMany({
+        orderBy: { date: "desc" },
+        include: {
+          _count: {
+            select: { likes: true },
+          },
         },
-      },
-    });
+      });
+      cache.set(cacheKey, gallery);
+    }
 
     const userLikes = await prisma.galleryLike.findMany({
       where: { ipAddress: ip },
@@ -308,6 +363,7 @@ app.post("/api/gallery/:id/like", async (req, res) => {
       await prisma.galleryLike.delete({
         where: { id: existingLike.id },
       });
+      cache.del("gallery_base");
       res.json({ liked: false });
     } else {
       await prisma.galleryLike.create({
@@ -316,6 +372,7 @@ app.post("/api/gallery/:id/like", async (req, res) => {
           ipAddress: ip,
         },
       });
+      cache.del("gallery_base");
       res.json({ liked: true });
     }
   } catch (error) {
@@ -329,6 +386,7 @@ app.post("/api/gallery", authenticate, async (req, res) => {
     const item = await prisma.gallery.create({
       data: { ...data, date: data.date ? new Date(data.date) : new Date() },
     });
+    cache.del("gallery_base");
     res.json(item);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -343,6 +401,7 @@ app.put("/api/gallery/:id", authenticate, async (req, res) => {
       where: { id },
       data: { ...data, date: data.date ? new Date(data.date) : new Date() },
     });
+    cache.del("gallery_base");
     res.json(item);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -353,6 +412,7 @@ app.delete("/api/gallery/:id", authenticate, async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.gallery.delete({ where: { id } });
+    cache.del("gallery_base");
     res.json({ message: "Deleted" });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -361,9 +421,14 @@ app.delete("/api/gallery/:id", authenticate, async (req, res) => {
 
 // --- Skills ---
 app.get("/api/skills", async (req, res) => {
+  const cacheKey = "skills";
+  const cachedData = cache.get(cacheKey);
+  if (cachedData) return res.json(cachedData);
+
   const skills = await prisma.skill.findMany({
     orderBy: { order: "asc" },
   });
+  cache.set(cacheKey, skills);
   res.json(skills);
 });
 
@@ -373,6 +438,7 @@ app.post("/api/skills", authenticate, async (req, res) => {
   if (data.order) data.order = parseInt(data.order);
   try {
     const skill = await prisma.skill.create({ data });
+    cache.del("skills");
     res.json(skill);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -386,6 +452,7 @@ app.put("/api/skills/:id", authenticate, async (req, res) => {
   if (data.order) data.order = parseInt(data.order);
   try {
     const skill = await prisma.skill.update({ where: { id }, data });
+    cache.del("skills");
     res.json(skill);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -396,6 +463,7 @@ app.delete("/api/skills/:id", authenticate, async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.skill.delete({ where: { id } });
+    cache.del("skills");
     res.json({ message: "Deleted" });
   } catch (error) {
     res.status(400).json({ error: error.message });
