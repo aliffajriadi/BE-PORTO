@@ -308,6 +308,57 @@ const getIp = (req) => {
     : req.connection.remoteAddress || req.ip;
 };
 
+const RANDOM_USERS = [
+  {
+    name: "TechEnthusiast",
+    avatar:
+      "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150",
+  },
+  {
+    name: "CodeMaster",
+    avatar:
+      "https://images.unsplash.com/photo-1599566150163-29194dcaad36?auto=format&fit=crop&w=150&h=150",
+  },
+  {
+    name: "PixelArtisan",
+    avatar:
+      "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=150&h=150",
+  },
+  {
+    name: "ByteSurfer",
+    avatar:
+      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150",
+  },
+  {
+    name: "LogicWizard",
+    avatar:
+      "https://ui-avatars.com/api/?name=Logic+Wizard&background=0D8ABC&color=fff",
+  },
+  {
+    name: "DreamCatcher",
+    avatar:
+      "https://ui-avatars.com/api/?name=Dream+Catcher&background=6b4fbb&color=fff",
+  },
+  {
+    name: "DevGamer",
+    avatar: "https://ui-avatars.com/api/?name=Dev+Gamer&background=random",
+  },
+  {
+    name: "StormChaser",
+    avatar: "https://ui-avatars.com/api/?name=Storm+Chaser&background=random",
+  },
+];
+
+const getRandomUser = (ipAddress) => {
+  // Use IP address as seed for consistency per user
+  let hash = 0;
+  for (let i = 0; i < ipAddress.length; i++) {
+    hash = ipAddress.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % RANDOM_USERS.length;
+  return RANDOM_USERS[index];
+};
+
 app.get("/api/gallery", async (req, res) => {
   const ip = getIp(req);
   const cacheKey = "gallery_base";
@@ -318,24 +369,33 @@ app.get("/api/gallery", async (req, res) => {
         orderBy: { date: "desc" },
         include: {
           _count: {
-            select: { likes: true },
+            select: { likes: true, comments: true },
           },
         },
       });
       cache.set(cacheKey, gallery);
     }
 
-    const userLikes = await prisma.galleryLike.findMany({
-      where: { ipAddress: ip },
-      select: { galleryId: true },
-    });
+    const [userLikes, userComments] = await Promise.all([
+      prisma.galleryLike.findMany({
+        where: { ipAddress: ip },
+        select: { galleryId: true },
+      }),
+      prisma.galleryComment.findMany({
+        where: { ipAddress: ip },
+        select: { galleryId: true },
+      }),
+    ]);
 
     const likedIds = new Set(userLikes.map((l) => l.galleryId));
+    const commentedIds = new Set(userComments.map((c) => c.galleryId));
 
     const result = gallery.map((item) => ({
       ...item,
       likesCount: item._count.likes,
+      commentsCount: item._count.comments,
       isLiked: likedIds.has(item.id),
+      hasCommented: commentedIds.has(item.id),
     }));
 
     res.json(result);
@@ -375,6 +435,66 @@ app.post("/api/gallery/:id/like", async (req, res) => {
       cache.del("gallery_base");
       res.json({ liked: true });
     }
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get("/api/gallery/:id/comments", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const comments = await prisma.galleryComment.findMany({
+      where: { galleryId: id },
+      orderBy: { createdAt: "desc" },
+    });
+    const result = comments.map((c) => ({
+      ...c,
+      user: getRandomUser(c.ipAddress),
+    }));
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/gallery/:id/comments", async (req, res) => {
+  const { id } = req.params;
+  const { content } = req.body;
+  const ip = getIp(req);
+
+  if (!content) {
+    return res.status(400).json({ error: "Content is required" });
+  }
+
+  try {
+    const existingComment = await prisma.galleryComment.findUnique({
+      where: {
+        galleryId_ipAddress: {
+          galleryId: id,
+          ipAddress: ip,
+        },
+      },
+    });
+
+    if (existingComment) {
+      return res
+        .status(403)
+        .json({ error: "You have already commented on this post" });
+    }
+
+    const comment = await prisma.galleryComment.create({
+      data: {
+        galleryId: id,
+        content,
+        ipAddress: ip,
+      },
+    });
+
+    cache.del("gallery_base");
+    res.json({
+      ...comment,
+      user: getRandomUser(ip),
+    });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
