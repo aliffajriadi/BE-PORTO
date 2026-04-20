@@ -33,6 +33,8 @@ const allowedOrigins = [
   "http://192.168.1.8:3000",
   "https://www.aliffajriadi.my.id", // production
   "https://aliffajriadi.my.id",
+  "http://10.172.51.7:3000",
+  "http://10.170.7.250:3000",
 ];
 
 app.use(
@@ -172,23 +174,28 @@ app.get("/api/blogs", async (req, res) => {
   const cachedData = cache.get(cacheKey);
   if (cachedData) return res.json(cachedData);
 
-  const { category, search } = req.query;
-  const where = {};
-  if (category && category !== "All") where.category = category;
-  if (search) {
-    where.OR = [
-      { title_en: { contains: search } },
-      { title_id: { contains: search } },
-      { content_en: { contains: search } },
-      { content_id: { contains: search } },
-    ];
+  try {
+    const { category, search } = req.query;
+    const where = {};
+    if (category && category !== "All") where.category = category;
+    if (search) {
+      where.OR = [
+        { title_en: { contains: search } },
+        { title_id: { contains: search } },
+        { content_en: { contains: search } },
+        { content_id: { contains: search } },
+      ];
+    }
+    const blogs = await prisma.blog.findMany({
+      where,
+      orderBy: { date: "desc" },
+    });
+    cache.set(cacheKey, blogs);
+    res.json(blogs);
+  } catch (error) {
+    console.error("Error fetching blogs:", error);
+    res.status(400).json({ error: error.message });
   }
-  const blogs = await prisma.blog.findMany({
-    where,
-    orderBy: { date: "desc" },
-  });
-  cache.set(cacheKey, blogs);
-  res.json(blogs);
 });
 
 app.get("/api/blogs/categories", async (req, res) => {
@@ -230,6 +237,7 @@ app.post("/api/blogs", authenticate, async (req, res) => {
 app.put("/api/blogs/:id", authenticate, async (req, res) => {
   const { id } = req.params;
   const data = req.body;
+  if (data.date) data.date = new Date(data.date);
   try {
     const blog = await prisma.blog.update({ where: { id }, data });
     clearCache("blogs");
